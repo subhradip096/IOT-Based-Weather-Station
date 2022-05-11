@@ -1,0 +1,130 @@
+#include <DHT.h>
+
+//Arduino to NodeMCU Lib
+#include <SoftwareSerial.h>
+#include <ArduinoJson.h>
+
+//Initialise Arduino to NodeMCU (5=Rx & 6=Tx)
+SoftwareSerial nodemcu(5, 6);
+
+const int capteur_D = 2;
+const int capteur_A = A1;
+int val;
+
+#define anInput     A3                        //analog feed from MQ135
+#define co2Zero     55 
+
+//Initialisation of DHT11 Sensor
+#define DHTPIN 4
+DHT dht(DHTPIN, DHT11);
+float temp;
+float hum;
+int co2now[10];                               //int array for co2 readings
+int co2raw = 0;                               //int for raw value of co2
+int co2ppm = 0;                               //int for calculated ppm
+int zzz = 0;
+float smoke;
+void setup() {
+  Serial.begin(9600);
+  pinMode(anInput,INPUT); 
+  pinMode(capteur_D, INPUT);
+  pinMode(capteur_A, INPUT);
+  pinMode(A2, INPUT);
+  dht.begin();
+  nodemcu.begin(9600);
+  delay(1000);
+
+  Serial.println("Program started");
+}
+
+void loop() {
+
+  StaticJsonBuffer<1000> jsonBuffer;
+  JsonObject& data = jsonBuffer.createObject();
+
+  //Obtain Temp and Hum data
+  dht11_func();
+
+
+  //Assign collected data to JSON Object
+  data["humidity"] = hum;
+  data["temperature"] = temp; 
+
+  co2ppmdata();
+  data["CO2 PPM Level"] = co2ppm;
+
+  rain();
+  
+
+  smoke1();
+  data["Rain"] = smoke;
+  //Send data to NodeMCU
+  data.printTo(nodemcu);
+  jsonBuffer.clear();
+
+  delay(2000);
+}
+
+void dht11_func() {
+
+  hum = dht.readHumidity();
+  temp = dht.readTemperature();
+  Serial.print("Humidity: ");
+  Serial.println(hum);
+  Serial.print("Temperature: ");
+  Serial.println(temp);
+
+}
+
+void co2ppmdata()
+{
+  
+                                    //int for averaging
+  for (int x = 0;x<10;x++)  //samplpe co2 10x over 2 seconds
+  {                   
+    co2now[x]=analogRead(A0);
+    delay(200);
+  }
+
+  for (int x = 0;x<10;x++)  //add samples together
+  {                     
+    zzz=zzz + co2now[x];  
+  }
+  
+  co2raw = zzz/10;                            //divide samples by 10
+  co2ppm = co2raw - co2Zero;                 //get calculated ppm
+  co2ppm=abs(co2ppm);
+  Serial.print("CO2value=");
+  Serial.print(co2ppm);  // prints the value read
+  Serial.println(" PPM");
+  delay(50);             
+
+}
+
+
+
+void rain()
+{
+  if(digitalRead(capteur_D) == LOW) 
+  {
+    Serial.println("Digital value : wet"); 
+    delay(10); 
+  }
+  else
+  {
+    Serial.println("Digital value : dry");
+    delay(10); 
+  }
+  val=analogRead(capteur_A); 
+  Serial.print("Analog value : ");
+  Serial.println(val); 
+  Serial.println("");
+  delay(1000);
+}
+
+void smoke1()
+{
+  smoke=analogRead(A2);
+  Serial.println("AQI");
+  Serial.println(smoke/3);
+}
